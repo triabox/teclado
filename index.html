@@ -143,10 +143,10 @@
     translate: 0 0;
     box-shadow:
       0 calc(var(--u) * .015) 0 color-mix(in srgb, var(--c) 45%, transparent),
-      0 0 calc(var(--u) * .35) color-mix(in srgb, var(--c) 70%, transparent),
+      0 0 calc(var(--u) * .35) color-mix(in srgb, var(--g, var(--c)) 70%, transparent),
       inset 0 -2px 6px color-mix(in srgb, var(--c) 40%, transparent),
       inset 0 2px 0 rgba(255,255,255,.4);
-    background: color-mix(in srgb, var(--c) 42%, rgba(255,255,255,.2));
+    background: color-mix(in srgb, var(--g, var(--c)) 42%, rgba(255,255,255,.2));
     scale: 1.03 .95;
   }
   .cap.jelly { animation: jelly .38s ease-out; }
@@ -228,7 +228,7 @@
   }
   .real .slot::after {
     content: ""; position: absolute; inset: -25%; border-radius: 50%;
-    background: radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--c) 85%, #fff) 0, color-mix(in srgb, var(--c) 40%, transparent) 18%, transparent 46%);
+    background: radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--g, var(--c)) 85%, #fff) 0, color-mix(in srgb, var(--g, var(--c)) 40%, transparent) 18%, transparent 46%);
     opacity: .4; transition: opacity .12s, scale .12s;
   }
   .real .key.down .slot::after { opacity: 1; scale: 1.3; }
@@ -283,10 +283,11 @@
 
   .key.down .c3d {
     translate: 0 calc(var(--u) * -.015);
-    box-shadow: 0 calc(var(--u) * .03) calc(var(--u) * .05) rgba(0,0,0,.25), 0 0 calc(var(--u) * .4) color-mix(in srgb, var(--c) 70%, transparent);
+    box-shadow: 0 calc(var(--u) * .03) calc(var(--u) * .05) rgba(0,0,0,.25), 0 0 calc(var(--u) * .4) color-mix(in srgb, var(--g, var(--c)) 70%, transparent);
     scale: 1.02 .97;
     transition-duration: .045s;
   }
+  .key.down .c3d .top { box-shadow: inset 0 0 calc(var(--u) * .28) color-mix(in srgb, var(--g, var(--c)) 65%, transparent), 0 1px 0 rgba(255,255,255,.55); }
   .c3d.jelly { animation: jelly .38s ease-out; }
 
   /* ---------- Pantalla completa ---------- */
@@ -319,7 +320,7 @@
         0 calc(var(--u) * .7) calc(var(--u) * .6) calc(var(--u) * -.25) rgba(0,0,0,.4);
     }
     .c3d { box-shadow: 0 calc(var(--u) * .12) calc(var(--u) * .08) rgba(0,0,0,.28); }
-    .key.down .c3d { box-shadow: 0 0 calc(var(--u) * .3) color-mix(in srgb, var(--c) 70%, transparent); }
+    .key.down .c3d { box-shadow: 0 0 calc(var(--u) * .3) color-mix(in srgb, var(--g, var(--c)) 70%, transparent); }
     .real .slot::after { transition: opacity .12s; }
     .real .key.down .slot::after { scale: 1; }
   }
@@ -465,6 +466,7 @@
         default:        c = opts.custom;
       }
       el.style.setProperty('--c', c);
+      el.style.removeProperty('--g');
       el.classList.toggle('dk', luminance(c) < 0.3);
       el.style.setProperty('--t', luminance(c) < 0.3 ? 'rgba(255,255,255,.85)' : `color-mix(in srgb, ${c} 55%, #000)`);
     });
@@ -621,8 +623,14 @@
   // ---------- Interacción ----------
   let count = 0, active = 0, startT = 0;
   const countEl = document.getElementById('count');
+  let hueShift = 0;
   function press(el) {
     if (!el || el.classList.contains('down')) return;
+    // en Cristal y Humo la luz de cada toque recorre el arcoíris
+    if (opts.colors === 'crystal' || opts.colors === 'smoke') {
+      el.style.setProperty('--g', `hsl(${Math.round(+el.dataset.x * 22 + +el.dataset.row * 14 + hueShift) % 360} 100% 58%)`);
+      hueShift += 9;
+    }
     el.classList.add('down');
     play(el, false);
     if (opts.bubbles) bubbles(el);
@@ -642,7 +650,7 @@
   const LITE = matchMedia('(pointer: coarse)').matches;
   function bubbles(el) {
     const r = el.getBoundingClientRect();
-    const c = getComputedStyle(el).getPropertyValue('--c');
+    const c = el.style.getPropertyValue('--g') || getComputedStyle(el).getPropertyValue('--c');
     const n = LITE ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
     if (document.getElementsByClassName('bub').length > (LITE ? 14 : 60)) return;
     for (let k = 0; k < n; k++) {
