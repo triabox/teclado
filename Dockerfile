@@ -1,4 +1,8 @@
-FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY index.html /usr/share/nginx/html/index.html
+FROM node:22-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY server.js game-config.js index.html ./
+ENV PORT=80
 EXPOSE 80
+CMD ["node", "server.js"]

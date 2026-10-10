@@ -1,0 +1,18 @@
+{
+  "name": "teclado",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Teclado anti-stress con modo juego, jugadores y ranking",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "PORT=8080 node server.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.5"
+  }
+}
