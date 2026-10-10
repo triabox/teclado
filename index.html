@@ -296,6 +296,33 @@
   .fsbar { position: fixed; top: 12px; right: 12px; z-index: 30; display: none; gap: 8px; }
   body.fs .fsbar { display: flex; }
   .fsbar .chip { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  /* ---------- Versión liviana para celulares y tablets ----------
+     Safari en iOS cierra la página si usa demasiada memoria gráfica:
+     se quitan los efectos más pesados (desenfoques, mezclas, textura). */
+  @media (pointer: coarse) {
+    .panel, .board, .fsbar .chip { backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .glow { animation: none; filter: blur(22px); opacity: .45; }
+    .real .glow { opacity: .55; }
+    .shine, .real .shine { display: none; }
+    .c3d .top::after, .cap::after { filter: none; }
+    .real .stage::after { filter: blur(calc(var(--u) * .3)); }
+    .real .board {
+      transition: none;
+      background:
+        linear-gradient(100deg, transparent 25%, rgba(255,255,255,.4) 42%, transparent 52%),
+        linear-gradient(170deg, rgba(255,255,255,.62), rgba(210,224,238,.3));
+      box-shadow:
+        inset 0 1px 0 #fff, inset 0 0 0 1px rgba(255,255,255,.6),
+        0 calc(var(--u) * .08) 0 rgba(214,236,250,.9),
+        0 calc(var(--u) * .16) 0 rgba(222,210,246,.8),
+        0 calc(var(--u) * .24) 0 rgba(255,255,255,.8),
+        0 calc(var(--u) * .7) calc(var(--u) * .6) calc(var(--u) * -.25) rgba(0,0,0,.4);
+    }
+    .c3d { box-shadow: 0 calc(var(--u) * .12) calc(var(--u) * .08) rgba(0,0,0,.28); }
+    .key.down .c3d { box-shadow: 0 0 calc(var(--u) * .3) color-mix(in srgb, var(--c) 70%, transparent); }
+    .real .slot::after { transition: opacity .12s; }
+    .real .key.down .slot::after { scale: 1; }
+  }
 </style>
 </head>
 <body>
@@ -583,8 +610,11 @@
     if (isRelease) p *= 1.3;
     return p;
   }
+  let voices = 0;
   function play(el, isRelease) {
     initAudio();
+    if (voices >= 10) return; // evita acumular cientos de nodos de audio al deslizar rápido
+    voices++; setTimeout(() => voices--, 250);
     SYNTH[opts.sound](ctx.currentTime + 0.002, pitchFor(el, isRelease), isRelease ? 0.35 : 1);
   }
 
@@ -609,10 +639,12 @@
   }
   document.addEventListener('animationend', e => e.target.classList?.remove('jelly'));
 
+  const LITE = matchMedia('(pointer: coarse)').matches;
   function bubbles(el) {
     const r = el.getBoundingClientRect();
     const c = getComputedStyle(el).getPropertyValue('--c');
-    const n = 2 + Math.floor(Math.random() * 3);
+    const n = LITE ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
+    if (document.getElementsByClassName('bub').length > (LITE ? 14 : 60)) return;
     for (let k = 0; k < n; k++) {
       const b = document.createElement('div');
       b.className = 'bub';
@@ -648,7 +680,7 @@
 
   // Modo realista: la luz y una leve inclinación siguen al cursor
   window.addEventListener('pointermove', e => {
-    if (!opts.real) return;
+    if (!opts.real || e.pointerType !== 'mouse') return; // en touch se omite: recalcula todo el teclado en cada movimiento
     const r = board.getBoundingClientRect();
     const x = Math.min(1.2, Math.max(-.2, (e.clientX - r.left) / r.width));
     const y = Math.min(1.2, Math.max(-.2, (e.clientY - r.top) / r.height));
