@@ -297,6 +297,16 @@
   .fsbar { position: fixed; top: 12px; right: 12px; z-index: 30; display: none; gap: 8px; }
   body.fs .fsbar { display: flex; }
   .fsbar .chip { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  /* Cristal y Humo: la tecla entera se enciende en arcoíris mientras está apretada */
+  .key.rb.down .cap.cap, .key.rb.down .c3d .top, .key.rb.down .c3d .w {
+    background: linear-gradient(90deg,#2ee59dd9,#19c3c0d9,#2f6bffd9,#8a5cffd9,#ff7eb6d9,#ffd60ad9,#2ee59dd9);
+    background-size: 200% 100%;
+    animation: flow 1.4s linear infinite;
+  }
+  .key.rb.down .c3d .w { filter: brightness(.82) saturate(1.2); }
+  .key.rb.down .c3d, .key.rb.down .cap { border-color: #fff; }
+  .key.rb.down .lbl { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
+
   /* ---------- Versión liviana para celulares y tablets ----------
      Safari en iOS cierra la página si usa demasiada memoria gráfica:
      se quitan los efectos más pesados (desenfoques, mezclas, textura). */
@@ -467,6 +477,7 @@
       }
       el.style.setProperty('--c', c);
       el.style.removeProperty('--g');
+      el.classList.toggle('rb', opts.colors === 'crystal' || opts.colors === 'smoke');
       el.classList.toggle('dk', luminance(c) < 0.3);
       el.style.setProperty('--t', luminance(c) < 0.3 ? 'rgba(255,255,255,.85)' : `color-mix(in srgb, ${c} 55%, #000)`);
     });
