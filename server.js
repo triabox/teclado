@@ -43,6 +43,7 @@ async function initDb() {
   await db.query(`CREATE TABLE IF NOT EXISTS games (
     id SERIAL PRIMARY KEY,
     player_id INTEGER NOT NULL,
+    game_id TEXT,
     day TEXT NOT NULL,
     score INTEGER NOT NULL,
     level INTEGER NOT NULL,
@@ -54,6 +55,9 @@ async function initDb() {
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
   await db.query('CREATE INDEX IF NOT EXISTS games_day_idx ON games (day)');
+  // bases creadas antes de que existiera el guardado por nivel
+  if (process.env.DATABASE_URL) await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS game_id TEXT');
+  await db.query('CREATE INDEX IF NOT EXISTS games_player_game_idx ON games (player_id, game_id)');
 }
 
 // ---------- Fechas (en la zona horaria del juego) ----------
@@ -177,12 +181,15 @@ const routes = {
     return { me: profile(p) };
   },
 
+  // Guarda una partida. El teclado la manda varias veces con el mismo gameId (al pasar cada nivel,
+  // al salir y al terminar) con los totales acumulados; acá se suma solo la diferencia de XP.
   'POST /api/games': async (req, body) => {
     const p = await playerFromReq(req);
     if (!p) throw new HttpError(401, 'Sesión vencida.');
-    if (limited('game:' + p.id, 1, 3e3)) throw new HttpError(429, 'Esperá un momento.');
-    const { score, level, bestCombo, hits, misses, durationMs } = body;
-    const okShape = int(score, 0, 5e6) && int(level, 1, 500) && int(bestCombo, 0, 5000) && int(hits, 0, 5000) &&
+    if (limited('game:' + p.id, 1, 1e3)) throw new HttpError(429, 'Esperá un momento.');
+    const { gameId, score, level, bestCombo, hits, misses, durationMs } = body;
+    const okShape = typeof gameId === 'string' && /^[A-Za-z0-9-]{8,40}$/.test(gameId) &&
+      int(score, 0, 5e6) && int(level, 1, 500) && int(bestCombo, 0, 5000) && int(hits, 0, 5000) &&
       int(misses, 0, 5000) && int(durationMs, 0, 4 * 3600e3);
     // El puntaje lo calcula el teclado, así que se descartan los que el juego no puede dar:
     // cada acierto vale como mucho 450 (150 × combo 3) y cada nivel superado da hasta 500 × nivel de bonus.
@@ -191,8 +198,15 @@ const routes = {
       bestCombo <= hits && durationMs >= hits * 60;
     if (!plausible) throw new HttpError(400, 'No se pudo guardar la partida.');
 
+    const prev = (await db.query('SELECT * FROM games WHERE player_id = $1 AND game_id = $2', [p.id, gameId])).rows[0];
+    // una partida ya guardada solo puede avanzar, nunca retroceder
+    if (prev && (score < prev.score || level < prev.level || hits < prev.hits || bestCombo < prev.best_combo))
+      throw new HttpError(400, 'No se pudo guardar la partida.');
+
     const day = today();
-    const streak = p.last_play_day === day ? p.streak_days : p.last_play_day === shiftDay(day, -1) ? p.streak_days + 1 : 1;
+    // la racha de días se decide en el primer guardado de la partida
+    const streak = prev || p.last_play_day === day ? Math.max(p.streak_days, 1)
+      : p.last_play_day === shiftDay(day, -1) ? p.streak_days + 1 : 1;
     const X = CFG.xp;
     const parts = {
       game: hits >= 5 ? X.perGame : 0, // sin esto se podría sumar XP perdiendo a propósito una y otra vez
@@ -203,21 +217,27 @@ const routes = {
     const subtotal = parts.game + parts.points + parts.levels + parts.combo;
     const streakPct = Math.round(Math.min(streak - 1, X.streakMaxDays) * X.streakPerDay * 100);
     parts.streak = Math.round(subtotal * streakPct / 100);
-    const gained = subtotal + parts.streak;
+    const total = Math.max(subtotal + parts.streak, prev ? prev.xp : 0);
+    const gained = total - (prev ? prev.xp : 0);
 
     const before = rankIndex(p.xp);
-    const r = await db.query(`UPDATE players SET xp = xp + $1, games = games + 1,
-        best_score = GREATEST(best_score, $2), best_combo = GREATEST(best_combo, $3), best_level = GREATEST(best_level, $4),
-        streak_days = $5, best_streak_days = GREATEST(best_streak_days, $5), last_play_day = $6
-      WHERE id = $7 RETURNING *`, [gained, score, bestCombo, level, streak, day, p.id]);
-    await db.query(`INSERT INTO games (player_id, day, score, level, best_combo, hits, misses, duration_ms, xp)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, [p.id, day, score, level, bestCombo, hits, misses, durationMs, gained]);
+    const r = await db.query(`UPDATE players SET xp = xp + $1, games = games + $2,
+        best_score = GREATEST(best_score, $3), best_combo = GREATEST(best_combo, $4), best_level = GREATEST(best_level, $5),
+        streak_days = $6, best_streak_days = GREATEST(best_streak_days, $6), last_play_day = $7
+      WHERE id = $8 RETURNING *`, [gained, prev ? 0 : 1, score, bestCombo, level, streak, prev ? p.last_play_day : day, p.id]);
+    if (prev) {
+      await db.query(`UPDATE games SET score = $1, level = $2, best_combo = $3, hits = $4, misses = $5, duration_ms = $6, xp = $7
+        WHERE id = $8`, [score, level, bestCombo, hits, misses, durationMs, total, prev.id]);
+    } else {
+      await db.query(`INSERT INTO games (player_id, game_id, day, score, level, best_combo, hits, misses, duration_ms, xp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [p.id, gameId, day, score, level, bestCombo, hits, misses, durationMs, total]);
+    }
     const me = profile(r.rows[0]);
     return {
-      xp: { ...parts, total: gained, streakPct }, me,
+      xp: { ...parts, total, streakPct }, gained, me,
       rankUp: me.rank > before,
       newUnlocks: CFG.ranks.slice(before + 1, me.rank + 1).flatMap(k => k.unlocks),
-      newStreakDay: p.last_play_day !== day,
+      newStreakDay: !prev && p.last_play_day !== day,
     };
   },
 
