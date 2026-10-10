@@ -359,6 +359,48 @@
     .real .slot::after { transition: opacity .12s; }
     .real .key.down .slot::after { scale: 1; }
   }
+  /* ---------- Modo juego ---------- */
+  body.game { padding: 16px; justify-content: center; height: 100vh; height: 100dvh; overflow: hidden; gap: 14px; }
+  body.game header, body.game .panel, body.game .stats, body.game .hint { display: none; }
+  body.game .stage { margin-top: 0; }
+  body.fs.game { padding-top: 60px; }
+  .hud {
+    display: none; flex-direction: column; gap: 10px; align-items: center;
+    width: min(100%, 860px); padding: 12px 16px; border-radius: 18px;
+    background: var(--panel); border: 1px solid var(--panel-b); color: var(--ink);
+  }
+  body.game .hud { display: flex; }
+  .hud-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center; align-items: center;
+    font-size: 13px; font-weight: 600; color: var(--muted); }
+  .hud-stats b { color: var(--ink); font-size: 16px; font-variant-numeric: tabular-nums; }
+  #gLives { color: #ff4d6d; font-size: 18px; letter-spacing: 2px; }
+  .hud-main { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; min-height: 46px;
+    font-size: 15px; font-weight: 600; color: var(--muted); }
+  .kc { min-width: 46px; padding: 6px 14px; border-radius: 12px; text-align: center;
+    font-size: 24px; font-weight: 800; color: #1d2230; background: #ffd60a; box-shadow: 0 4px 0 #c9a600; }
+  .kc.done { background: #2ee59d; box-shadow: 0 4px 0 #1fae75; opacity: .55; }
+  .hud-bar { width: 100%; height: 8px; border-radius: 99px; background: var(--plate-b); overflow: hidden; }
+  .hud-bar i { display: block; height: 100%; width: 100%; border-radius: 99px; background: linear-gradient(90deg, #ff4d6d, #ffd60a, #2ee59d); transform-origin: left; }
+  .hud-msg { display: none; flex-direction: column; gap: 10px; align-items: center; text-align: center; font-size: 15px; line-height: 1.45; }
+  .hud-msg strong { display: block; font-size: 22px; }
+  .hud.msg .hud-msg { display: flex; }
+  .hud.msg .hud-main, .hud.msg .hud-bar { display: none; }
+  .hud .go { font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; padding: 10px 22px; border-radius: 999px;
+    border: 0; background: #19c3c0; color: #fff; }
+  .key.target::after {
+    content: ""; position: absolute; inset: calc(var(--u) * .01); z-index: 4; pointer-events: none;
+    border-radius: calc(var(--u) * .16); border: 4px solid #fff; translate: 0 calc(var(--u) * -.1);
+    background: rgba(255,214,10,.6);
+    box-shadow: 0 0 0 3px #ffb300, 0 0 calc(var(--u) * .7) calc(var(--u) * .12) #ffd60a;
+    animation: target .5s ease-in-out infinite alternate;
+  }
+  @keyframes target { from { opacity: .8; scale: 1; } to { opacity: 1; scale: 1.1; } }
+  .key.wrong::after {
+    content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none; border-radius: calc(var(--u) * .16);
+    background: rgba(255,60,90,.55); box-shadow: 0 0 calc(var(--u) * .5) #ff3c5a; translate: 0 calc(var(--u) * -.1);
+  }
+  .pts { position: fixed; z-index: 25; pointer-events: none; font-weight: 800; font-size: 20px; color: #ffd60a;
+    text-shadow: 0 2px 4px rgba(0,0,0,.6); animation: rise var(--d) ease-out forwards; }
 </style>
 </head>
 <body>
@@ -403,6 +445,7 @@
         <button class="chip" data-opt="labels">Letras</button>
         <button class="chip" id="darkBtn">Oscuro</button>
         <button class="chip" id="updBtn">🔄 Actualizar</button>
+        <button class="chip" id="gameBtn">🎮 Modo juego</button>
       </div>
     </div>
   </section>
@@ -410,9 +453,25 @@
   <div class="fsbar">
     <button class="chip" id="fsSound" title="Cambiar sonido"></button>
     <button class="chip" id="fsReal" title="Modo realista">✨</button>
+    <button class="chip" id="fsGame" title="Modo juego">🎮</button>
     <button class="chip" id="fsUpd" title="Actualizar a la última versión">🔄</button>
     <button class="chip" id="fsExit" title="Salir de pantalla completa">✕</button>
   </div>
+
+  <section class="hud msg" id="hud">
+    <div class="hud-stats">
+      <span>Nivel <b id="gLvl">1</b></span>
+      <span>Ronda <b id="gRound">0/10</b></span>
+      <span>Puntos <b id="gPts">0</b></span>
+      <span>Combo <b id="gCombo">x1</b></span>
+      <span>Exactitud <b id="gAcc">100%</b></span>
+      <span id="gLives">♥♥♥</span>
+      <button class="chip" id="gExit">Salir</button>
+    </div>
+    <div class="hud-main" id="gMain"></div>
+    <div class="hud-bar"><i id="gBar"></i></div>
+    <div class="hud-msg"><div id="gMsg"></div><button class="go" id="gStart">Empezar</button></div>
+  </section>
 
   <div class="stage" id="stage">
     <div class="glow"></div>
@@ -682,6 +741,7 @@
     play(el, false);
     if (opts.bubbles) bubbles(el);
     countEl.textContent = ++count;
+    if (G.running) gameHit(el);
     if (active++ === 0) startT = performance.now();
   }
   function release(el) {
@@ -817,9 +877,11 @@
   // ---------- Pantalla completa ----------
   const root = document.documentElement;
   function fit() {
-    if (!document.body.classList.contains('fs')) { root.style.removeProperty('--u'); return; }
+    const cl = document.body.classList;
+    if (!cl.contains('fs') && !cl.contains('game')) { root.style.removeProperty('--u'); return; }
+    const hudH = cl.contains('game') ? $('hud').offsetHeight + (cl.contains('fs') ? 60 : 20) : 0;
     const byW = (innerWidth - 40) / 16.7;
-    const byH = (innerHeight - 70) / (opts.real ? 7.3 : 6.9);
+    const byH = (innerHeight - 70 - hudH) / (opts.real ? 7.3 : 6.9);
     root.style.setProperty('--u', Math.max(18, Math.min(byW, byH)) + 'px');
   }
   function enterFs() {
@@ -850,8 +912,136 @@
   if (!SOUNDS[opts.sound]) opts.sound = DEFAULTS.sound;
   syncUI();
   paint();
+  // ---------- Modo juego ----------
+  const ROUNDS = 10, MAX_LIVES = 3;
+  const G = { running: false, level: 1, score: 0, combo: 0, lives: MAX_LIVES, hits: 0, misses: 0, round: 0,
+              targets: new Set(), order: [], t0: 0, limit: 0, raf: 0, last: null };
+  const codes = str => [...str].map(ch => 'Key' + ch);
+  const HOME = codes('ASDFGHJKL'), TOP = codes('QWERTYUIOP'), BOTTOM = codes('ZXCVBNM');
+  const DIGITS = [...'1234567890'].map(d => 'Digit' + d);
+  // teclas que no conviene pedir: no existen en muchos teclados o las captura el sistema
+  const ALL_GAME = keys.map(k => k.dataset.code).filter(c => !/^(F\d+|Meta|Context|Print|Escape|Caps|Home|End|Page|Delete)/.test(c));
+  const POOLS = [HOME, [...HOME, ...TOP], [...HOME, ...TOP, ...BOTTOM], [...HOME, ...TOP, ...BOTTOM, ...DIGITS], ALL_GAME];
+  const levelCfg = l => ({
+    pool: POOLS[Math.min(l, POOLS.length) - 1],
+    n: l < 4 ? 1 : l < 6 ? 2 : 3,                    // cuántas teclas a la vez
+    time: l < 4 ? 4.5 - l * .5 : l < 6 ? 4.4 - (l - 4) * .6 : Math.max(2, 4.2 - (l - 6) * .3), // segundos por ronda
+  });
+  const NAMES = { Space: 'Espacio', Backspace: '⌫ Borrar', ShiftLeft: 'Shift izq.', ShiftRight: 'Shift der.',
+                  ControlLeft: 'Ctrl izq.', ControlRight: 'Ctrl der.', AltLeft: 'Alt', AltRight: 'AltGr' };
+  const keyName = c => NAMES[c] || keyByCode.get(c).querySelector('.lbl').textContent;
+  const accuracy = () => G.hits + G.misses ? G.hits / (G.hits + G.misses) : 1;
+  let record = 0;
+  try { record = +localStorage.getItem('teclado-record') || 0; } catch {}
+
+  function hudUpdate() {
+    $('gLvl').textContent = G.level;
+    $('gRound').textContent = Math.min(G.round, ROUNDS) + '/' + ROUNDS;
+    $('gPts').textContent = G.score;
+    $('gCombo').textContent = 'x' + (1 + Math.min(G.combo, 20) / 10).toFixed(1);
+    $('gAcc').textContent = Math.round(accuracy() * 100) + '%';
+    $('gLives').textContent = '♥'.repeat(Math.max(G.lives, 0)) + '♡'.repeat(MAX_LIVES - Math.max(G.lives, 0));
+    $('gMain').innerHTML = 'Apretá ' + G.order.map(c =>
+      `<span class="kc${G.targets.has(c) ? '' : ' done'}">${keyName(c)}</span>`).join('');
+  }
+  function hudMsg(html, btn) {
+    $('hud').classList.toggle('msg', html !== null);
+    if (html !== null) { $('gMsg').innerHTML = html; $('gStart').style.display = btn ? '' : 'none'; if (btn) $('gStart').textContent = btn; }
+    fit();
+  }
+  function clearTargets() { keys.forEach(k => k.classList.remove('target')); G.targets.clear(); G.order = []; }
+  function gameSound(notes, type = 'sine') {
+    initAudio();
+    notes.forEach(([f, dt]) => { const t = ctx.currentTime + dt; tone(t, type, f, f, .01, amp(t, .35, .01, .18), .25); });
+  }
+  function floatText(el, text) {
+    const r = el.getBoundingClientRect(), d = document.createElement('div');
+    d.className = 'pts'; d.textContent = text;
+    Object.assign(d.style, { left: r.left + r.width / 2 + 'px', top: r.top + 'px' });
+    d.style.setProperty('--dx', '0px'); d.style.setProperty('--dy', '55px'); d.style.setProperty('--d', '.8s');
+    document.body.appendChild(d); d.addEventListener('animationend', () => d.remove());
+  }
+
+  function nextRound() {
+    clearTargets();
+    const cfg = levelCfg(G.level), pool = cfg.pool.filter(c => c !== G.last);
+    while (G.order.length < cfg.n) {
+      const c = pool[Math.floor(Math.random() * pool.length)];
+      if (!G.targets.has(c)) { G.targets.add(c); G.order.push(c); keyByCode.get(c).classList.add('target'); }
+    }
+    G.last = G.order[0];
+    G.round++; G.limit = cfg.time * 1000; G.t0 = performance.now();
+    hudUpdate();
+  }
+  function tick() {
+    if (!G.running) return;
+    const left = 1 - (performance.now() - G.t0) / G.limit;
+    $('gBar').style.transform = `scaleX(${Math.max(left, 0)})`;
+    if (left <= 0) { G.round--; fail(); if (G.running) nextRound(); }
+    G.raf = requestAnimationFrame(tick);
+  }
+  function fail() {
+    G.misses++; G.combo = 0; G.lives--;
+    gameSound([[150, 0], [110, .09]], 'sawtooth');
+    if (G.lives <= 0) gameOver(); else hudUpdate();
+  }
+  function gameHit(el) {
+    const code = el.dataset.code;
+    if (!G.targets.has(code)) {
+      el.classList.add('wrong'); setTimeout(() => el.classList.remove('wrong'), 320);
+      return fail();
+    }
+    G.targets.delete(code); el.classList.remove('target');
+    const speed = Math.max(0, 1 - (performance.now() - G.t0) / G.limit);
+    const pts = Math.round((50 + 100 * speed) * (1 + Math.min(G.combo, 20) / 10)); // velocidad × combo
+    G.combo++; G.hits++; G.score += pts;
+    floatText(el, '+' + pts);
+    if (G.targets.size) return hudUpdate();
+    if (G.round >= ROUNDS) levelUp(); else nextRound();
+  }
+  function levelUp() {
+    G.running = false; cancelAnimationFrame(G.raf); clearTargets();
+    const bonus = Math.round(accuracy() * 100) * 5 * G.level;
+    G.score += bonus; G.level++; G.round = 0; G.lives = Math.min(MAX_LIVES, G.lives + 1);
+    hudUpdate();
+    const cfg = levelCfg(G.level);
+    hudMsg(`<strong>¡Nivel ${G.level - 1} superado!</strong>Bonus por exactitud: +${bonus} puntos · recuperás una vida<br>` +
+           `Nivel ${G.level}: ${cfg.n > 1 ? cfg.n + ' teclas a la vez' : 'más teclas'}, ${cfg.time.toFixed(1)} s por ronda`, null);
+    gameSound([[523, 0], [659, .1], [784, .2], [1047, .32]]);
+    setTimeout(() => { if (document.body.classList.contains('game') && !G.running && G.lives > 0) resume(); }, 2200);
+  }
+  function resume() { hudMsg(null); G.running = true; nextRound(); G.raf = requestAnimationFrame(tick); }
+  function gameOver() {
+    G.running = false; cancelAnimationFrame(G.raf); clearTargets(); hudUpdate();
+    const isRecord = G.score > record;
+    if (isRecord) { record = G.score; try { localStorage.setItem('teclado-record', record); } catch {} }
+    hudMsg(`<strong>${isRecord ? '🏆 ¡Nuevo récord!' : 'Fin del juego'}</strong>` +
+           `${G.score} puntos · nivel ${G.level} · exactitud ${Math.round(accuracy() * 100)}%<br>Récord: ${record} puntos`, 'Jugar de nuevo');
+  }
+  function startGame() {
+    Object.assign(G, { level: 1, score: 0, combo: 0, lives: MAX_LIVES, hits: 0, misses: 0, round: 0, last: null });
+    initAudio(); resume();
+  }
+  function openGame() {
+    document.body.classList.add('game'); G.running = false; clearTargets();
+    Object.assign(G, { level: 1, score: 0, combo: 0, lives: MAX_LIVES, hits: 0, misses: 0, round: 0 });
+    hudUpdate();
+    hudMsg('<strong>🎮 Modo juego</strong>Apretá las teclas que se iluminan en amarillo, lo más rápido que puedas.<br>' +
+           'Más velocidad y más aciertos seguidos = más puntos. Tenés 3 vidas: perdés una si te equivocás o se acaba el tiempo.' +
+           (record ? `<br>Récord: ${record} puntos` : ''), 'Empezar');
+    $('gameBtn').classList.add('on'); $('fsGame').classList.add('on');
+  }
+  function closeGame() {
+    G.running = false; cancelAnimationFrame(G.raf); clearTargets();
+    document.body.classList.remove('game'); $('gameBtn').classList.remove('on'); $('fsGame').classList.remove('on');
+    fit();
+  }
+  $('gameBtn').onclick = $('fsGame').onclick = e => { document.body.classList.contains('game') ? closeGame() : openGame(); e.target.blur(); };
+  $('gStart').onclick = e => { startGame(); e.target.blur(); };
+  $('gExit').onclick = closeGame;
+
   // ---------- Actualizar ----------
-  const VERSION = 8;
+  const VERSION = 9;
   $('ver').textContent = 'versión ' + VERSION + (NOMIX ? ' · modo compatible' : '');
   const latest = mode => fetch(location.pathname, { cache: mode }).then(r => r.text());
   function update() {
