@@ -402,6 +402,7 @@
         <button class="chip" data-opt="rgb">Luz RGB</button>
         <button class="chip" data-opt="labels">Letras</button>
         <button class="chip" id="darkBtn">Oscuro</button>
+        <button class="chip" id="updBtn">🔄 Actualizar</button>
       </div>
     </div>
   </section>
@@ -409,6 +410,7 @@
   <div class="fsbar">
     <button class="chip" id="fsSound" title="Cambiar sonido"></button>
     <button class="chip" id="fsReal" title="Modo realista">✨</button>
+    <button class="chip" id="fsUpd" title="Actualizar a la última versión">🔄</button>
     <button class="chip" id="fsExit" title="Salir de pantalla completa">✕</button>
   </div>
 
@@ -422,7 +424,7 @@
     <div>Hoy relajaste: <b id="time">0s</b></div>
   </div>
   <div class="hint">Tip: mantené apretado y deslizá el dedo sobre las teclas para hacer “olas”.</div>
-  <div class="hint" id="ver" style="opacity:.6;font-size:11px">versión 7</div>
+  <div class="hint" id="ver" style="opacity:.6;font-size:11px"></div>
 
 <script>
 (() => {
@@ -848,7 +850,26 @@
   if (!SOUNDS[opts.sound]) opts.sound = DEFAULTS.sound;
   syncUI();
   paint();
-  if (NOMIX) $('ver').textContent += ' · modo compatible';
+  // ---------- Actualizar ----------
+  const VERSION = 8;
+  $('ver').textContent = 'versión ' + VERSION + (NOMIX ? ' · modo compatible' : '');
+  const latest = mode => fetch(location.pathname, { cache: mode }).then(r => r.text());
+  function update() {
+    $('updBtn').textContent = '🔄 Actualizando…';
+    // vuelve a bajar la página salteando la caché y recién ahí recarga
+    latest('reload').catch(() => {}).then(() => location.reload());
+  }
+  $('updBtn').onclick = $('fsUpd').onclick = update;
+  function checkVersion() {
+    latest('no-store').then(html => {
+      const m = html.match(/const VERSION = (\d+);/);
+      if (m && +m[1] > VERSION) {
+        $('updBtn').textContent = '🔄 Hay una versión nueva'; $('updBtn').classList.add('on'); $('fsUpd').classList.add('on');
+      }
+    }).catch(() => {});
+  }
+  checkVersion();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
 })();
 </script>
 </body>
