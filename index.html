@@ -298,14 +298,20 @@
   body.fs .fsbar { display: flex; }
   .fsbar .chip { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
   /* Cristal y Humo: la tecla entera se enciende en arcoíris mientras está apretada */
-  .key.rb.down .cap.cap, .key.rb.down .c3d .top, .key.rb.down .c3d .w {
+  .key.rb.lit .cap.cap, .key.rb.lit .c3d .top, .key.rb.lit .c3d .w {
     background: linear-gradient(90deg,#2ee59dd9,#19c3c0d9,#2f6bffd9,#8a5cffd9,#ff7eb6d9,#ffd60ad9,#2ee59dd9);
     background-size: 200% 100%;
     animation: flow 1.4s linear infinite;
   }
-  .key.rb.down .c3d .w { filter: brightness(.82) saturate(1.2); }
-  .key.rb.down .c3d, .key.rb.down .cap { border-color: #fff; }
-  .key.rb.down .lbl { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
+  .key.rb.lit .cap.cap.jelly { animation: flow 1.4s linear infinite, jelly .38s ease-out; }
+  .key.rb.lit .c3d .w { filter: brightness(.82) saturate(1.2); }
+  .key.rb.lit .c3d, .key.rb.lit .cap { border-color: #fff; }
+  .key.rb.lit .lbl { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
+  /* sigue encendida un rato después de soltar (en touch el dedo la tapa mientras se aprieta) */
+  .key.rb.lit:not(.down) .c3d, .key.rb.lit:not(.down) .cap {
+    box-shadow: 0 calc(var(--u) * .12) calc(var(--u) * .1) rgba(0,0,0,.25), 0 0 calc(var(--u) * .45) var(--g, #fff);
+  }
+  .key.rb.lit .slot::after { opacity: 1; }
 
   /* ---------- Versión liviana para celulares y tablets ----------
      Safari en iOS cierra la página si usa demasiada memoria gráfica:
@@ -642,6 +648,7 @@
       el.style.setProperty('--g', `hsl(${Math.round(+el.dataset.x * 22 + +el.dataset.row * 14 + hueShift) % 360} 100% 58%)`);
       hueShift += 9;
     }
+    clearTimeout(el._lit); el.classList.add('lit');
     el.classList.add('down');
     play(el, false);
     if (opts.bubbles) bubbles(el);
@@ -651,6 +658,7 @@
   function release(el) {
     if (!el || !el.classList.contains('down')) return;
     el.classList.remove('down');
+    el._lit = setTimeout(() => el.classList.remove('lit'), 1100);
     const cap = el.querySelector(opts.real ? '.c3d' : '.cap');
     cap.classList.remove('jelly'); void cap.offsetWidth; cap.classList.add('jelly');
     if (opts.release) play(el, true);
