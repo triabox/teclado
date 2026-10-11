@@ -1444,6 +1444,7 @@
       .then(r => {
         if (G.gid !== game || !document.body.classList.contains('game')) return; // ya empezó otra partida
         const x = r.xp, parts = [`partida ${x.game}`, `puntos ${x.points}`, `niveles ${x.levels}`, `combo ${x.combo}`];
+        if (x.capped) parts.push(`tope por nivel −${x.capped}`);
         if (x.streak) parts.push(`racha de días +${x.streakPct}% (${x.streak})`);
         // la partida se fue guardando por nivel: el resumen compara contra cómo estaba al empezar
         const rankUp = r.me.rank > G.rank0;
@@ -1709,7 +1710,7 @@
             `<span class="mult">${lost ? '💤 Un día sin jugar: racha 0' : days ? `${days} ${days === 1 ? 'día' : 'días'} · +${Math.round(Math.min(days - 1, X.streakMaxDays) * X.streakPerDay * 100)}% XP` : 'Jugá hoy para empezar'}</span>`;
         } },
       { title: '3. Experiencia y rangos', steps: SRV.ranks.length * 2 + 2,
-        text: `Cada partida te da experiencia (XP): ${X.perGame} por jugar, 1 por cada ${X.pointsPer} puntos, ${X.perLevel} por cada nivel que pases y 1 por cada acierto de tu mejor combo (hasta ${X.comboMax}). Con la experiencia subís de rango y desbloqueás colores, sonidos y efectos.`,
+        text: `Cada partida te da experiencia (XP): ${X.perGame} por jugar, 1 por cada ${X.pointsPer} puntos, ${X.perLevel} por cada nivel que pases y 1 por cada acierto de tu mejor combo (hasta ${X.comboMax}), con un tope de ${X.capPerLevel} por cada nivel que juegues. Con la experiencia subís de rango y desbloqueás colores, sonidos y efectos.`,
         draw: n => {
           const r = SRV.ranks[Math.min(Math.floor(n / 2), SRV.ranks.length - 1)];
           return `<span style="font-size:40px">${r.emoji}</span><span class="mult">${esc(r.name)}</span>` +
@@ -1761,7 +1762,7 @@
   }).catch(() => { SRV = null; }).then(fresh => { renderPlayer(); refreshLocks(); announce(fresh); });
 
   // ---------- Actualizar ----------
-  const VERSION = 17;
+  const VERSION = 18;
   $('ver').textContent = 'versión ' + VERSION + (NOMIX ? ' · modo compatible' : '');
   const latest = mode => fetch(location.pathname, { cache: mode }).then(r => r.text());
   function update() {

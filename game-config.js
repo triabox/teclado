@@ -21,6 +21,7 @@ module.exports = {
     pointsPer: 100,     // 1 XP cada tantos puntos
     perLevel: 15,       // por cada nivel superado
     comboMax: 50,       // 1 XP por acierto de la mejor racha, hasta este tope
+    capPerLevel: 60,    // tope de XP por cada nivel jugado en la partida (el extra por racha de días va aparte)
     streakPerDay: 0.1,  // extra por cada día seguido después del primero
     streakMaxDays: 5,   // tope del extra: 5 días = +50%
   },

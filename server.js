@@ -299,7 +299,11 @@ const routes = {
       levels: (level - startLevel) * X.perLevel,
       combo: Math.min(bestCombo, X.comboMax),
     };
-    const subtotal = parts.game + parts.points + parts.levels + parts.combo;
+    // Tope por nivel jugado (los pasados más el que estaba en curso): sin esto los niveles altos dan
+    // varias veces más experiencia que los bajos y los rangos se terminan en pocos días.
+    const raw = parts.game + parts.points + parts.levels + parts.combo;
+    const subtotal = Math.min(raw, X.capPerLevel * (level - startLevel + 1));
+    parts.capped = raw - subtotal;
     const streakPct = Math.round(Math.min(streak - 1, X.streakMaxDays) * X.streakPerDay * 100);
     parts.streak = Math.round(subtotal * streakPct / 100);
     const total = Math.max(subtotal + parts.streak, prev ? prev.xp : 0);
