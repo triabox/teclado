@@ -44,6 +44,7 @@ async function initDb() {
     id SERIAL PRIMARY KEY,
     player_id INTEGER NOT NULL,
     game_id TEXT,
+    start_level INTEGER NOT NULL DEFAULT 1,
     day TEXT NOT NULL,
     score INTEGER NOT NULL,
     level INTEGER NOT NULL,
@@ -56,7 +57,10 @@ async function initDb() {
   )`);
   await db.query('CREATE INDEX IF NOT EXISTS games_day_idx ON games (day)');
   // bases creadas antes de que existiera el guardado por nivel
-  if (process.env.DATABASE_URL) await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS game_id TEXT');
+  if (process.env.DATABASE_URL) {
+    await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS game_id TEXT');
+    await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS start_level INTEGER NOT NULL DEFAULT 1');
+  }
   await db.query('CREATE INDEX IF NOT EXISTS games_player_game_idx ON games (player_id, game_id)');
 }
 
@@ -188,19 +192,23 @@ const routes = {
     if (!p) throw new HttpError(401, 'Sesión vencida.');
     if (limited('game:' + p.id, 1, 1e3)) throw new HttpError(429, 'Esperá un momento.');
     const { gameId, score, level, bestCombo, hits, misses, durationMs } = body;
+    const startLevel = body.startLevel === undefined ? 1 : body.startLevel; // nivel desde el que arrancó (punto de partida guardado)
     const okShape = typeof gameId === 'string' && /^[A-Za-z0-9-]{8,40}$/.test(gameId) &&
-      int(score, 0, 5e6) && int(level, 1, 500) && int(bestCombo, 0, 5000) && int(hits, 0, 5000) &&
+      int(score, 0, 5e6) && int(level, 1, 500) && int(startLevel, 1, 500) && startLevel <= level && int(bestCombo, 0, 5000) && int(hits, 0, 5000) &&
       int(misses, 0, 5000) && int(durationMs, 0, 4 * 3600e3);
     // El puntaje lo calcula el teclado, así que se descartan los que el juego no puede dar:
     // cada acierto vale como mucho 450 (150 × combo 3) y cada nivel superado da hasta 500 × nivel de bonus.
-    const maxBonus = 500 * (level - 1) * level / 2;
-    const plausible = okShape && score <= hits * 450 + maxBonus && level - 1 <= Math.floor(hits / 10) &&
+    // Solo cuentan los niveles pasados en esta partida: arrancar desde un nivel guardado no los regala de nuevo,
+    // y nadie puede arrancar más arriba del mejor nivel al que llegó.
+    const maxBonus = 500 * ((level - 1) * level - (startLevel - 1) * startLevel) / 2;
+    const plausible = okShape && startLevel <= Math.max(p.best_level, 1) &&
+      score <= hits * 450 + maxBonus && level - startLevel <= Math.floor(hits / 10) &&
       bestCombo <= hits && durationMs >= hits * 60;
     if (!plausible) throw new HttpError(400, 'No se pudo guardar la partida.');
 
     const prev = (await db.query('SELECT * FROM games WHERE player_id = $1 AND game_id = $2', [p.id, gameId])).rows[0];
     // una partida ya guardada solo puede avanzar, nunca retroceder
-    if (prev && (score < prev.score || level < prev.level || hits < prev.hits || bestCombo < prev.best_combo))
+    if (prev && (startLevel !== (prev.start_level || 1) || score < prev.score || level < prev.level || hits < prev.hits || bestCombo < prev.best_combo))
       throw new HttpError(400, 'No se pudo guardar la partida.');
 
     const day = today();
@@ -211,7 +219,7 @@ const routes = {
     const parts = {
       game: hits >= 5 ? X.perGame : 0, // sin esto se podría sumar XP perdiendo a propósito una y otra vez
       points: Math.floor(score / X.pointsPer),
-      levels: (level - 1) * X.perLevel,
+      levels: (level - startLevel) * X.perLevel,
       combo: Math.min(bestCombo, X.comboMax),
     };
     const subtotal = parts.game + parts.points + parts.levels + parts.combo;
@@ -229,8 +237,8 @@ const routes = {
       await db.query(`UPDATE games SET score = $1, level = $2, best_combo = $3, hits = $4, misses = $5, duration_ms = $6, xp = $7
         WHERE id = $8`, [score, level, bestCombo, hits, misses, durationMs, total, prev.id]);
     } else {
-      await db.query(`INSERT INTO games (player_id, game_id, day, score, level, best_combo, hits, misses, duration_ms, xp)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [p.id, gameId, day, score, level, bestCombo, hits, misses, durationMs, total]);
+      await db.query(`INSERT INTO games (player_id, game_id, day, score, level, best_combo, hits, misses, duration_ms, xp, start_level)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [p.id, gameId, day, score, level, bestCombo, hits, misses, durationMs, total, startLevel]);
     }
     const me = profile(r.rows[0]);
     return {
