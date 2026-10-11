@@ -536,6 +536,26 @@
   @keyframes conf { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r)); opacity: 0; } }
   body.compact .fxbanner { font-size: 15px; padding: 8px 18px; }
   body.compact .fxbanner b { font-size: 20px; }
+  /* ---------- Festejos: calificación de cada toque, rachas y estrellas ---------- */
+  .pts { text-align: center; white-space: nowrap; }
+  .pts b { display: block; font-size: 15px; letter-spacing: .03em; }
+  .pts.r-p { color: #ffd60a; text-shadow: 0 0 10px rgba(255,214,10,.9), 0 2px 4px rgba(0,0,0,.6); }
+  .pts.r-p b { font-size: 20px; }
+  .pts.r-s { color: #2ee59d; }
+  .pts.r-b { color: #6fd6ff; font-size: 17px; }
+  .pts.r-o { color: #c3c8d4; font-size: 14px; }
+  .pts.r-o b { font-size: 12px; }
+  .fxbanner.streak { background: linear-gradient(135deg, #8a5cff, #ff7eb6 55%, #ffb300); box-shadow: 0 0 50px rgba(138,92,255,.7); }
+  .fxbanner.streak small { display: block; font-size: 14px; font-weight: 600; opacity: .9; }
+  /* la luz del teclado acompaña la racha de aciertos */
+  body.hot .stage:not(.norgb) .glow { opacity: .95; }
+  body.fire .stage:not(.norgb) .glow { animation: pulse .5s ease-in-out infinite alternate; }
+  @keyframes pulse { from { opacity: .55; } to { opacity: 1; } }
+  .stars { font-size: 34px; letter-spacing: 4px; color: #ffb300; line-height: 1.1; }
+  .stars i { display: inline-block; font-style: normal; animation: starpop .45s backwards; }
+  .stars i.off { color: var(--plate-b); }
+  @keyframes starpop { from { scale: 0; rotate: -90deg; opacity: 0; } 70% { scale: 1.35; } }
+  body.compact .stars { font-size: 24px; }
 </style>
 </head>
 <body>
@@ -578,6 +598,7 @@
         <button class="chip" data-opt="bubbles">Burbujas</button>
         <button class="chip" data-opt="rgb">Luz RGB</button>
         <button class="chip" data-opt="labels">Letras</button>
+        <button class="chip" data-opt="cheer">🎉 Festejos</button>
         <span id="fxChips" style="display:contents"></span>
         <button class="chip" id="darkBtn">Oscuro</button>
         <button class="chip" id="updBtn">🔄 Actualizar</button>
@@ -646,7 +667,7 @@
 
   // ---------- Opciones ----------
   const DEFAULTS = { sound: 'bubble', colors: 'rainbow', custom: '#19c3c0', vol: 0.7, pitch: 1, vari: 0.12, rev: 0.3,
-                     release: true, musical: false, bubbles: true, rgb: true, labels: true, dark: null, real: true };
+                     release: true, musical: false, bubbles: true, rgb: true, labels: true, cheer: true, dark: null, real: true };
   let opts = { ...DEFAULTS };
   try { Object.assign(opts, JSON.parse(localStorage.getItem('teclado-antistress') || '{}')); } catch {}
   const save = () => { try { localStorage.setItem('teclado-antistress', JSON.stringify(opts)); } catch {} };
@@ -1232,6 +1253,9 @@
   try { record = +localStorage.getItem('teclado-record') || 0; } catch {}
 
   function hudUpdate() {
+    const playing = document.body.classList.contains('game');
+    document.body.classList.toggle('hot', playing && G.combo >= 10);
+    document.body.classList.toggle('fire', playing && G.combo >= 20);
     $('gLvl').textContent = G.level;
     $('gRound').textContent = Math.min(G.round, ROUNDS) + '/' + ROUNDS;
     $('gPts').textContent = G.score;
@@ -1261,9 +1285,10 @@
     initAudio();
     notes.forEach(([f, dt]) => { const t = ctx.currentTime + dt; tone(t, type, f, f, .01, amp(t, .35, .01, .18), .25); });
   }
-  function floatText(el, text) {
+  function floatText(el, text, rate) {
     const r = el.getBoundingClientRect(), d = document.createElement('div');
-    d.className = 'pts'; d.textContent = text;
+    d.className = 'pts' + (rate ? ' r-' + rate[0] : '');
+    d.innerHTML = (rate ? `<b>${rate[1]}</b>` : '') + text;
     const [dx, dy] = local(r.left + r.width / 2, r.top + r.height / 2);
     Object.assign(d.style, { left: dx + 'px', top: dy + 'px' });
     d.style.setProperty('--dx', '0px'); d.style.setProperty('--dy', '55px'); d.style.setProperty('--d', '.8s');
@@ -1305,8 +1330,18 @@
     if (G.fx.dizzy) paint();
     G.fx = newFx(); $('gFx').textContent = '';
   }
+  let bannerBusy = 0;
+  function streakBanner(text, sub) {
+    if (performance.now() < bannerBusy) return; // no pisar el cartel de una tecla especial
+    const b = $('fxBanner');
+    b.className = 'fxbanner streak';
+    b.innerHTML = `<b>${text}</b><small>${sub}</small>`;
+    void b.offsetWidth; b.classList.add('show');
+    if (opts.cheer) gameSound([[659, 0], [880, .08], [1175, .16]]);
+  }
   function fxBanner(good, icon, text) {
     const b = $('fxBanner');
+    bannerBusy = performance.now() + 1700;
     b.className = 'fxbanner ' + (good ? 'good' : 'bad');
     b.innerHTML = `<b>${good ? CHEERS[Math.floor(Math.random() * CHEERS.length)] : '¡Uy!'}</b>${icon} ${text}`;
     void b.offsetWidth; b.classList.add('show');
@@ -1389,11 +1424,26 @@
     if (left <= 0) { G.round--; fail(); if (G.running) nextRound(); }
     G.raf = requestAnimationFrame(tick);
   }
+  const RATES = [['p', '¡PERFECTO!', 880], ['s', '¡SÚPER!', 659], ['b', '¡BIEN!', 554], ['o', 'OK', 440]]; // [clave, texto, tono]
+  const COMBO_CHEERS = { 5: '¡Vas bien!', 10: '¡En racha! 🔥', 20: '¡Imparable! ⚡', 30: '¡Increíble! 🌟', 50: '¡LEYENDA! 👑', 100: '¡Fuera de serie! 🚀' };
+  const PERFECT_CHEERS = { 3: '¡Triple perfecto!', 5: '¡Racha perfecta! ✨', 10: '¡Perfección total! 💎' };
+  const newRate = () => ({ p: 0, s: 0, b: 0, o: 0 });
+  // Estrellas del nivel (solo se muestran): mitad por exactitud, mitad por qué tan buenos fueron los toques
+  function levelStars(missesInLevel) {
+    const r = G.rate, hitsInLevel = r.p + r.s + r.b + r.o;
+    if (!hitsInLevel) return '';
+    const acc = hitsInLevel / (hitsInLevel + missesInLevel), quality = (r.p + r.s * .75 + r.b * .5 + r.o * .25) / hitsInLevel;
+    const v = acc * .5 + quality * .5, stars = v >= .9 ? 5 : v >= .75 ? 4 : v >= .6 ? 3 : v >= .45 ? 2 : 1;
+    const phrase = stars === 5 ? (missesInLevel ? '¡Excelente!' : '¡Nivel perfecto!') : stars === 4 ? '¡Muy bien!' : stars === 3 ? '¡Bien hecho!' : '¡Lo lograste!';
+    const parts = [[r.p, 'perfectos'], [r.s, 'súper'], [r.b, 'bien'], [r.o, 'ok']].filter(x => x[0]).map(x => x[0] + ' ' + x[1]);
+    return `<div class="stars">${[0, 1, 2, 3, 4].map(i => `<i class="${i < stars ? '' : 'off'}" style="animation-delay:${i * .12}s">★</i>`).join('')}</div>` +
+           `<b>${phrase}</b><br>${parts.join(' · ')} · mejor racha ${G.lvlBestRun}<br>`;
+  }
   function fail() {
     if (G.fx.shield) { // el escudo absorbe un error: no cuenta ni corta el combo
       G.fx.shield = false; fxBanner(true, '🛡️', 'El escudo te salvó'); return hudUpdate();
     }
-    G.misses++; G.combo = 0; G.lives--;
+    G.misses++; G.combo = 0; G.lives--; G.perfRun = 0; G.lvlRun = 0;
     gameSound([[150, 0], [110, .09]], 'sawtooth');
     if (G.lives <= 0) gameOver(); else hudUpdate();
   }
@@ -1408,7 +1458,18 @@
     const speed = Math.max(0, 1 - (performance.now() - G.t0) / G.limit);
     const pts = Math.round((50 + 100 * speed) * (1 + Math.min(G.combo, 20) / 10)) * (performance.now() < G.fx.double ? 2 : 1); // velocidad × combo (× 2 con puntos dobles)
     G.combo++; G.hits++; G.score += pts; G.bestCombo = Math.max(G.bestCombo, G.combo);
-    floatText(el, '+' + pts);
+    // Calificación del toque, como en los juegos de baile: compara el tiempo usado con el ritmo necesario
+    // para llegar justo (en rondas de varias teclas, cada una tiene su parte del tiempo).
+    const n = G.order.length, k = n - G.targets.size;
+    const pace = (performance.now() - G.t0) / (G.limit * k / n);
+    const rate = RATES[pace <= .45 ? 0 : pace <= .65 ? 1 : pace <= .85 ? 2 : 3];
+    G.rate[rate[0]]++; G.perfRun = rate[0] === 'p' ? G.perfRun + 1 : 0;
+    G.lvlRun++; G.lvlBestRun = Math.max(G.lvlBestRun, G.lvlRun);
+    floatText(el, '+' + pts, rate);
+    if (opts.cheer) { initAudio(); const t = ctx.currentTime; tone(t, 'triangle', rate[2], rate[2], .01, amp(t, .1, .005, .12), .15); }
+    const mile = COMBO_CHEERS[G.combo], perf = PERFECT_CHEERS[G.perfRun];
+    if (mile) streakBanner(mile, `${G.combo} aciertos seguidos`);
+    else if (perf) { streakBanner(perf, `${G.perfRun} perfectos seguidos`); if (G.perfRun >= 5) confetti(el); }
     if (G.targets.size) return hudUpdate();
     if (G.round >= ROUNDS) levelUp(); else nextRound();
   }
@@ -1416,18 +1477,19 @@
     G.running = false; cancelAnimationFrame(G.raf); clearTargets(); stopSpecials();
     const bonus = Math.round(accuracy() * 100) * 5 * G.level;
     if (G.misses === G.lvlMisses) G.perfect++; // nivel sin errores
-    G.lvlMisses = G.misses;
+    const starsHtml = levelStars(G.misses - G.lvlMisses);
+    G.lvlMisses = G.misses; G.rate = newRate(); G.lvlRun = 0; G.lvlBestRun = 0;
     const regain = levelCfg(G.level).regainLife && G.lives < MAX_LIVES;
     G.score += bonus; G.level++; G.round = 0; if (regain) G.lives++;
     if (!ME && G.level > guestLevel) { guestLevel = G.level; try { localStorage.setItem('teclado-nivel', guestLevel); } catch {} }
     hudUpdate();
     const cfg = levelCfg(G.level);
-    hudMsg(`<strong>¡Nivel ${G.level - 1} superado!</strong>Bonus por exactitud: +${bonus} puntos${regain ? ' · recuperás una vida' : ''}<br>` +
+    hudMsg(`<strong>¡Nivel ${G.level - 1} superado!</strong>${starsHtml}Bonus por exactitud: +${bonus} puntos${regain ? ' · recuperás una vida' : ''}<br>` +
            `Nivel ${G.level}: ${cfg.n > 1 ? cfg.n + ' teclas a la vez' : 'más teclas'}, ${cfg.time.toFixed(1)} s por ronda`, null);
     gameSound([[523, 0], [659, .1], [784, .2], [1047, .32]]);
     if (ME && SRV) saveGame().then(r => { if (!r.newAchievements.length) toast(r.gained ? `💾 Progreso guardado: +${r.gained} XP` : '💾 Progreso guardado'); },
                                    () => toast('No se pudo guardar el progreso. Se reintenta al final.'));
-    setTimeout(() => { if (document.body.classList.contains('game') && !G.running && G.lives > 0) resume(); }, 2200);
+    setTimeout(() => { if (document.body.classList.contains('game') && !G.running && G.lives > 0) resume(); }, 3400);
   }
   function resume() { hudMsg(null); G.running = true; G.lastTick = performance.now(); nextRound(); G.raf = requestAnimationFrame(tick); }
   function gameOver() {
@@ -1484,7 +1546,8 @@
                        bestCombo: 0, started: performance.now(), active: true, newDay: false,
                        gid: (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12)),
                        rank0: ME ? ME.rank : 0, queue: Promise.resolve(), perfect: 0, lvlMisses: 0, newAch: [],
-                       special: null, sinceSp: 0, nextSp: 8 + Math.floor(Math.random() * 5), goodKeys: 0, goodRun: 0, bestGoodRun: 0 });
+                       special: null, sinceSp: 0, nextSp: 8 + Math.floor(Math.random() * 5), goodKeys: 0, goodRun: 0, bestGoodRun: 0,
+                       rate: newRate(), perfRun: 0, lvlRun: 0, lvlBestRun: 0 });
     initAudio(); resume();
   }
   function openGame() {
@@ -1501,7 +1564,7 @@
     G.running = false; cancelAnimationFrame(G.raf); clearTargets(); stopSpecials();
     const saving = saveUnfinished(false);
     if (saving) saving.then(r => toast(`💾 Partida guardada: +${r.xp.total} XP en total`), () => toast('No se pudo guardar la partida.'));
-    document.body.classList.remove('game'); $('gameBtn').classList.remove('on'); $('fsGame').classList.remove('on');
+    document.body.classList.remove('game', 'hot', 'fire'); $('gameBtn').classList.remove('on'); $('fsGame').classList.remove('on');
     fit();
   }
   $('gameBtn').onclick = $('fsGame').onclick = e => { document.body.classList.contains('game') ? closeGame() : openGame(); e.target.blur(); };
@@ -1762,7 +1825,7 @@
   }).catch(() => { SRV = null; }).then(fresh => { renderPlayer(); refreshLocks(); announce(fresh); });
 
   // ---------- Actualizar ----------
-  const VERSION = 18;
+  const VERSION = 19;
   $('ver').textContent = 'versión ' + VERSION + (NOMIX ? ' · modo compatible' : '');
   const latest = mode => fetch(location.pathname, { cache: mode }).then(r => r.text());
   function update() {
