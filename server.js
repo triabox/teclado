@@ -38,6 +38,8 @@ async function initDb() {
     podiums INTEGER NOT NULL DEFAULT 0,
     podium_checked TEXT,
     title TEXT,
+    good_keys INTEGER NOT NULL DEFAULT 0,
+    best_good_run INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
   await db.query(`CREATE TABLE IF NOT EXISTS sessions (
@@ -51,6 +53,7 @@ async function initDb() {
     game_id TEXT,
     start_level INTEGER NOT NULL DEFAULT 1,
     perfect_levels INTEGER NOT NULL DEFAULT 0,
+    good_keys INTEGER NOT NULL DEFAULT 0,
     day TEXT NOT NULL,
     score INTEGER NOT NULL,
     level INTEGER NOT NULL,
@@ -67,8 +70,10 @@ async function initDb() {
     await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS game_id TEXT');
     await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS start_level INTEGER NOT NULL DEFAULT 1');
     await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS perfect_levels INTEGER NOT NULL DEFAULT 0');
+    await db.query('ALTER TABLE games ADD COLUMN IF NOT EXISTS good_keys INTEGER NOT NULL DEFAULT 0');
     for (const col of ['total_hits INTEGER NOT NULL DEFAULT 0', 'perfect_levels INTEGER NOT NULL DEFAULT 0',
-                       'podiums INTEGER NOT NULL DEFAULT 0', 'podium_checked TEXT', 'title TEXT'])
+                       'podiums INTEGER NOT NULL DEFAULT 0', 'podium_checked TEXT', 'title TEXT',
+                       'good_keys INTEGER NOT NULL DEFAULT 0', 'best_good_run INTEGER NOT NULL DEFAULT 0'])
       await db.query('ALTER TABLE players ADD COLUMN IF NOT EXISTS ' + col);
     // jugadores anteriores a los logros: su total de teclas sale de las partidas ya guardadas
     await db.query(`UPDATE players SET total_hits = (SELECT COALESCE(SUM(g.hits), 0) FROM games g WHERE g.player_id = players.id)
@@ -128,7 +133,8 @@ setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (no
 const rankIndex = xp => { let i = 0; CFG.ranks.forEach((r, k) => { if (xp >= r.min) i = k; }); return i; };
 const CROWN_RANK = CFG.ranks.findIndex(r => r.unlocks.includes('badge:crown'));
 const statsOf = p => ({ perfectLevels: p.perfect_levels, bestCombo: p.best_combo, bestLevel: p.best_level,
-  bestStreak: p.best_streak_days, games: p.games, totalHits: p.total_hits, podiums: p.podiums });
+  bestStreak: p.best_streak_days, games: p.games, totalHits: p.total_hits, podiums: p.podiums,
+  goodKeys: p.good_keys, bestGoodRun: p.best_good_run });
 function profile(p, earned = []) {
   const day = today(), i = rankIndex(p.xp), next = CFG.ranks[i + 1];
   const alive = p.last_play_day === day || p.last_play_day === shiftDay(day, -1); // la racha sigue viva si jugó hoy o ayer
@@ -258,22 +264,28 @@ const routes = {
     const { gameId, score, level, bestCombo, hits, misses, durationMs } = body;
     const startLevel = body.startLevel === undefined ? 1 : body.startLevel; // nivel desde el que arrancó (punto de partida guardado)
     const perfectLevels = body.perfectLevels === undefined ? 0 : body.perfectLevels; // niveles pasados sin errores en esta partida
+    const goodKeys = body.goodKeys === undefined ? 0 : body.goodKeys;       // teclas verdes atrapadas en esta partida
+    const goodRun = body.bestGoodRun === undefined ? 0 : body.bestGoodRun;  // mejor seguidilla de verdes sin tocar una roja
     const okShape = typeof gameId === 'string' && /^[A-Za-z0-9-]{8,40}$/.test(gameId) &&
       int(score, 0, 5e6) && int(level, 1, 500) && int(startLevel, 1, 500) && startLevel <= level && int(bestCombo, 0, 5000) && int(hits, 0, 5000) &&
-      int(misses, 0, 5000) && int(durationMs, 0, 4 * 3600e3) && int(perfectLevels, 0, level - startLevel);
+      int(misses, 0, 5000) && int(durationMs, 0, 4 * 3600e3) && int(perfectLevels, 0, level - startLevel) &&
+      int(goodKeys, 0, 2000) && int(goodRun, 0, goodKeys);
     // El puntaje lo calcula el teclado, así que se descartan los que el juego no puede dar:
-    // cada acierto vale como mucho 450 (150 × combo 3) y cada nivel superado da hasta 500 × nivel de bonus.
+    // cada acierto vale como mucho 900 (150 × combo 3 × puntos dobles) y cada nivel superado da hasta 500 × nivel de bonus.
+    // Las teclas verdes pueden saltar rondas o un nivel entero, por eso un nivel puede pasarse con pocos aciertos;
+    // aparece como mucho una tecla especial cada 8 rondas.
     // Solo cuentan los niveles pasados en esta partida: arrancar desde un nivel guardado no los regala de nuevo,
     // y nadie puede arrancar más arriba del mejor nivel al que llegó.
     const maxBonus = 500 * ((level - 1) * level - (startLevel - 1) * startLevel) / 2;
     const plausible = okShape && startLevel <= Math.max(p.best_level, 1) &&
-      score <= hits * 450 + maxBonus && level - startLevel <= Math.floor(hits / 10) &&
+      score <= hits * 900 + maxBonus && level - startLevel <= Math.floor(hits / 5) + 2 &&
+      goodKeys <= Math.floor(hits / 6) + 2 &&
       bestCombo <= hits && durationMs >= hits * 60;
     if (!plausible) throw new HttpError(400, 'No se pudo guardar la partida.');
 
     const prev = (await db.query('SELECT * FROM games WHERE player_id = $1 AND game_id = $2', [p.id, gameId])).rows[0];
     // una partida ya guardada solo puede avanzar, nunca retroceder
-    if (prev && (startLevel !== (prev.start_level || 1) || score < prev.score || level < prev.level || hits < prev.hits || bestCombo < prev.best_combo || perfectLevels < prev.perfect_levels))
+    if (prev && (startLevel !== (prev.start_level || 1) || score < prev.score || level < prev.level || hits < prev.hits || bestCombo < prev.best_combo || perfectLevels < prev.perfect_levels || goodKeys < prev.good_keys))
       throw new HttpError(400, 'No se pudo guardar la partida.');
 
     const day = today();
@@ -297,16 +309,18 @@ const routes = {
     const r = await db.query(`UPDATE players SET xp = xp + $1, games = games + $2,
         best_score = GREATEST(best_score, $3), best_combo = GREATEST(best_combo, $4), best_level = GREATEST(best_level, $5),
         streak_days = $6, best_streak_days = GREATEST(best_streak_days, $6), last_play_day = $7,
-        total_hits = total_hits + $9, perfect_levels = perfect_levels + $10
+        total_hits = total_hits + $9, perfect_levels = perfect_levels + $10,
+        good_keys = good_keys + $11, best_good_run = GREATEST(best_good_run, $12)
       WHERE id = $8 RETURNING *`, [gained, prev ? 0 : 1, score, bestCombo, level, streak, prev ? p.last_play_day : day, p.id,
-                                    hits - (prev ? prev.hits : 0), perfectLevels - (prev ? prev.perfect_levels : 0)]);
+                                    hits - (prev ? prev.hits : 0), perfectLevels - (prev ? prev.perfect_levels : 0),
+                                    goodKeys - (prev ? prev.good_keys : 0), goodRun]);
     if (prev) {
       await db.query(`UPDATE games SET score = $1, level = $2, best_combo = $3, hits = $4, misses = $5, duration_ms = $6, xp = $7,
-        perfect_levels = $9 WHERE id = $8`, [score, level, bestCombo, hits, misses, durationMs, total, prev.id, perfectLevels]);
+        perfect_levels = $9, good_keys = $10 WHERE id = $8`, [score, level, bestCombo, hits, misses, durationMs, total, prev.id, perfectLevels, goodKeys]);
     } else {
-      await db.query(`INSERT INTO games (player_id, game_id, day, score, level, best_combo, hits, misses, duration_ms, xp, start_level, perfect_levels)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [p.id, gameId, day, score, level, bestCombo, hits, misses, durationMs, total, startLevel, perfectLevels]);
+      await db.query(`INSERT INTO games (player_id, game_id, day, score, level, best_combo, hits, misses, duration_ms, xp, start_level, perfect_levels, good_keys)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [p.id, gameId, day, score, level, bestCombo, hits, misses, durationMs, total, startLevel, perfectLevels, goodKeys]);
     }
     const { me, newAchievements } = await withProfile(r.rows[0]);
     return {

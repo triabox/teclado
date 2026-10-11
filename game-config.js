@@ -41,7 +41,7 @@ module.exports = {
   ],
 
   // Logros: metas que no dependen de la experiencia. `stat` es un contador del jugador
-  // (perfectLevels, bestCombo, bestLevel, bestStreak, games, totalHits, podiums) y `goal` el valor a alcanzar.
+  // (perfectLevels, bestCombo, bestLevel, bestStreak, games, totalHits, podiums, bestGoodRun, goodKeys) y `goal` el valor a alcanzar.
   // Para sumar uno alcanza con agregar una entrada; si da premio, su id va en `unlocks`.
   achievements: [
     { id: 'punteria',   emoji: '🎯', name: 'Puntería',     desc: 'Pasar un nivel sin errores',            stat: 'perfectLevels', goal: 1,    unlocks: [] },
@@ -56,6 +56,8 @@ module.exports = {
     { id: 'dias30',     emoji: '🗓️', name: '30 días',      desc: 'Jugar 30 días seguidos',                stat: 'bestStreak',    goal: 30,   unlocks: ['title:constante'] },
     { id: 'partidas50', emoji: '🎮', name: '50 partidas',  desc: 'Jugar 50 partidas',                     stat: 'games',         goal: 50,   unlocks: [] },
     { id: 'teclas5000', emoji: '⌨️', name: '5.000 teclas', desc: 'Acertar 5.000 teclas en total',         stat: 'totalHits',     goal: 5000, unlocks: ['sound:typewriter'] },
+    { id: 'cazador',    emoji: '🍀', name: 'Cazador',      desc: 'Atrapar 5 teclas verdes seguidas sin tocar una roja', stat: 'bestGoodRun', goal: 5, unlocks: [] },
+    { id: 'coleccion',  emoji: '💚', name: 'Coleccionista', desc: 'Atrapar 50 teclas verdes en total',    stat: 'goodKeys',      goal: 50,   unlocks: [] },
     { id: 'podio',      emoji: '🥇', name: 'Podio',        desc: 'Terminar una semana entre los 3 primeros', stat: 'podiums',    goal: 1,    unlocks: [] },
   ],
 
