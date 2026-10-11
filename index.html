@@ -1212,10 +1212,17 @@
   // teclas que no conviene pedir: no existen en muchos teclados o las captura el sistema
   const ALL_GAME = keys.map(k => k.dataset.code).filter(c => !/^(F\d+|Meta|Context|Print|Escape|Caps|Home|End|Page|Delete)/.test(c));
   const POOLS = [HOME, [...HOME, ...TOP], [...HOME, ...TOP, ...BOTTOM], [...HOME, ...TOP, ...BOTTOM, ...DIGITS], ALL_GAME];
+  // Dificultad por nivel. Sube de a poco y se aplana: los tiempos tienden a un piso que sigue siendo jugable
+  // (unos 0,55 s por tecla), así que cada nivel aprieta un poco más sin volverse imposible.
   const levelCfg = l => ({
     pool: POOLS[Math.min(l, POOLS.length) - 1],
-    n: l < 4 ? 1 : l < 6 ? 2 : 3,                    // cuántas teclas a la vez
-    time: l < 4 ? 4.5 - l * .5 : l < 6 ? 4.4 - (l - 4) * .6 : Math.max(2, 4.2 - (l - 6) * .3), // segundos por ronda
+    n: l < 4 ? 1 : l < 6 ? 2 : l < 12 ? 3 : 4,                     // cuántas teclas a la vez
+    time: l < 4 ? [3.6, 3.1, 2.7][l - 1]                          // segundos por ronda
+        : l < 6 ? [3.8, 3.3][l - 4]
+        : l < 12 ? 1.7 + 2.0 * Math.pow(0.85, l - 6)              // 3 teclas: de 3,7 s a 2,6 s
+        : 2.2 + 0.9 * Math.pow(0.82, l - 12),                     // 4 teclas: de 3,1 s hacia 2,2 s
+    regainLife: l < 6 || l % 2 === 0,                             // al pasar el nivel: siempre al principio, después nivel por medio
+    goodChance: Math.max(0.4, 0.6 - 0.02 * (l - 2)),              // teclas especiales: cada vez menos verdes y más rojas
   });
   const NAMES = { Space: 'Espacio', Backspace: '⌫ Borrar', ShiftLeft: 'Shift izq.', ShiftRight: 'Shift der.',
                   ControlLeft: 'Ctrl izq.', ControlRight: 'Ctrl der.', AltLeft: 'Alt', AltRight: 'AltGr' };
@@ -1286,7 +1293,7 @@
   }
   function spawnSpecial(now) {
     const free = POOLS[3].filter(c => !G.targets.has(c)); // letras y números: quedan a mano
-    const code = free[Math.floor(Math.random() * free.length)], good = Math.random() < 0.6;
+    const code = free[Math.floor(Math.random() * free.length)], good = Math.random() < levelCfg(G.level).goodChance;
     G.special = { code, good, until: now + 3500 };
     keyByCode.get(code).classList.add(good ? 'sp-good' : 'sp-bad');
     G.sinceSp = 0; G.nextSp = 8 + Math.floor(Math.random() * 5); // la próxima, entre 8 y 12 rondas después
@@ -1410,11 +1417,12 @@
     const bonus = Math.round(accuracy() * 100) * 5 * G.level;
     if (G.misses === G.lvlMisses) G.perfect++; // nivel sin errores
     G.lvlMisses = G.misses;
-    G.score += bonus; G.level++; G.round = 0; G.lives = Math.min(MAX_LIVES, G.lives + 1);
+    const regain = levelCfg(G.level).regainLife && G.lives < MAX_LIVES;
+    G.score += bonus; G.level++; G.round = 0; if (regain) G.lives++;
     if (!ME && G.level > guestLevel) { guestLevel = G.level; try { localStorage.setItem('teclado-nivel', guestLevel); } catch {} }
     hudUpdate();
     const cfg = levelCfg(G.level);
-    hudMsg(`<strong>¡Nivel ${G.level - 1} superado!</strong>Bonus por exactitud: +${bonus} puntos · recuperás una vida<br>` +
+    hudMsg(`<strong>¡Nivel ${G.level - 1} superado!</strong>Bonus por exactitud: +${bonus} puntos${regain ? ' · recuperás una vida' : ''}<br>` +
            `Nivel ${G.level}: ${cfg.n > 1 ? cfg.n + ' teclas a la vez' : 'más teclas'}, ${cfg.time.toFixed(1)} s por ronda`, null);
     gameSound([[523, 0], [659, .1], [784, .2], [1047, .32]]);
     if (ME && SRV) saveGame().then(r => { if (!r.newAchievements.length) toast(r.gained ? `💾 Progreso guardado: +${r.gained} XP` : '💾 Progreso guardado'); },
@@ -1753,7 +1761,7 @@
   }).catch(() => { SRV = null; }).then(fresh => { renderPlayer(); refreshLocks(); announce(fresh); });
 
   // ---------- Actualizar ----------
-  const VERSION = 16;
+  const VERSION = 17;
   $('ver').textContent = 'versión ' + VERSION + (NOMIX ? ' · modo compatible' : '');
   const latest = mode => fetch(location.pathname, { cache: mode }).then(r => r.text());
   function update() {
